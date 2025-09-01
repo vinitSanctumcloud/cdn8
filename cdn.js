@@ -95,6 +95,7 @@
       border-radius: 50%;
       object-fit: cover;
       display: block;
+      border: 2px solid white;
       transition: transform 0.2s ease;
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }

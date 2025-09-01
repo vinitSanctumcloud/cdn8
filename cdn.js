@@ -1,13 +1,14 @@
 (function () {
   // Configuration (to be passed when embedding or fetched from server)
   const config = {
-    agentSlug: window.EarnLinksConfig?.agentSlug || 'default-agent',
-    chatUrl: window.EarnLinksConfig?.chatUrl || 'https://example.com/chat',
+    agentSlug: window.LinkaAiConfig?.agentSlug || 'default-agent',
+    chatUrl: window.LinkaAiConfig?.chatUrl || 'https://example.com/chat',
     embedSize: {
-      width: window.EarnLinksConfig?.embedSize?.width || '600px',
-      height: window.EarnLinksConfig?.embedSize?.height || '600px',
+      width: window.LinkaAiConfig?.embedSize?.width || '600px',
+      height: window.LinkaAiConfig?.embedSize?.height || '600px',
     },
     apiUrl: 'https://api.tagwell.co/api/v4/ai-agent/get-agent/details/',
+    closingMessage: window.LinkaAiConfig?.closingMessage || '', // New config for closing message
   };
 
   // Dynamic height and width adjustment
@@ -36,8 +37,6 @@
     --chat-height: ${embedHeight};
     width: 150px; /* Default to video width when chat is closed */
     max-width: 100%;
-    border: 2px solid white; /* White border when chat is closed */
-    border-radius: 50%; /* Circular border for closed state */
   `;
 
   // Create video wrapper (to contain video and label)
@@ -47,6 +46,20 @@
     position: relative;
     width: 150px;
     height: 150px;
+  `;
+
+  // Create closing message input wrapper
+  const inputWrapper = document.createElement('div');
+  inputWrapper.className = 'closing-message-wrapper';
+  inputWrapper.style.cssText = `
+    display: none;
+    width: 100%;
+    max-width: 300px;
+    margin-top: 10px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   `;
 
   // CSS styles
@@ -62,18 +75,18 @@
       left: 50%;
       transform: translateX(-50%);
       text-align: center;
-      font-size: 12px; /* Smaller font to fit inside video */
+      font-size: 12px;
       font-weight: bold;
       color: #333;
-      background: rgba(255, 255, 255, 0.8); /* Low opacity */
+      background: rgba(255, 255, 255, 0.8);
       padding: 3px 6px;
       border-radius: 4px;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); /* Enhanced shadow */
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); /* Text shadow */
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
       transition: opacity 0.2s ease;
-      width: 90%; /* Fit within video width */
-      max-width: 130px; /* Slightly less than video width */
-      z-index: 1001; /* Above video */
+      width: 90%;
+      max-width: 130px;
+      z-index: 1001;
     }
     .chat-video {
       width: 150px;
@@ -109,8 +122,6 @@
       width: var(--chat-width) !important;
       height: var(--chat-height) !important;
       z-index: 100000000;
-      border: none; /* Remove border when chat is open */
-      border-radius: 10px; /* Match iframe border-radius when open */
     }
     .close-button {
       display: none;
@@ -128,7 +139,7 @@
       line-height: 32px;
       text-align: center;
       cursor: pointer;
-      z-index: 9999;
+      z-index: 1001;
       transition: transform 0.2s ease;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
     }
@@ -143,6 +154,38 @@
     }
     .video-wrapper.hidden {
       display: none;
+    }
+    .closing-message-wrapper {
+      display: none;
+    }
+    .closing-message-wrapper.active {
+      display: block;
+    }
+    .closing-message-label {
+      font-size: 12px;
+      font-weight: medium;
+      color: #333;
+      margin-bottom: 4px;
+    }
+    .closing-message-input {
+      width: 100%;
+      padding: 6px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      transition: border-color 0.2s ease;
+    }
+    .closing-message-input:focus {
+      outline: none;
+      border-color: #5a67d8;
+      box-shadow: 0 0 0 2px rgba(90, 103, 216, 0.2);
+    }
+    .closing-message-counter {
+      font-size: 12px;
+      color: #666;
+      text-align: right;
+      margin-top: 4px;
     }
     .chat-loading {
       position: fixed;
@@ -172,16 +215,16 @@
       .chat-container.active {
         width: 100% !important;
         height: 80vh !important;
-        border: none; /* Ensure no border when open on small screens */
       }
       .chat-container:not(.active) {
         width: 150px !important;
         max-width: 100%;
-        border: 2px solid white; /* White border when closed on small screens */
-        border-radius: 50%; /* Circular border for closed state */
       }
       .chat-label {
-        max-width: 100%; /* Full width on small screens when closed */
+        max-width: 100%;
+      }
+      .closing-message-wrapper {
+        max-width: 100%;
       }
     }
   `;
@@ -206,6 +249,38 @@
   videoSource.id = 'video-source';
   videoSource.type = 'video/mp4';
   video.appendChild(videoSource);
+
+  // Create closing message input
+  const closingMessageLabel = document.createElement('label');
+  closingMessageLabel.className = 'closing-message-label';
+  closingMessageLabel.textContent = 'Closing Message';
+  closingMessageLabel.htmlFor = 'closing-message-input';
+
+  const closingMessageInput = document.createElement('input');
+  closingMessageInput.className = 'closing-message-input';
+  closingMessageInput.id = 'closing-message-input';
+  closingMessageInput.placeholder = 'Final Closing Message (Optional)';
+  closingMessageInput.maxLength = 500;
+  closingMessageInput.value = config.closingMessage;
+
+  const closingMessageCounter = document.createElement('div');
+  closingMessageCounter.className = 'closing-message-counter';
+  closingMessageCounter.textContent = `${closingMessageInput.value.length}/500`;
+
+  // Update counter on input
+  closingMessageInput.addEventListener('input', () => {
+    closingMessageCounter.textContent = `${closingMessageInput.value.length}/500`;
+    // Send closing message to iframe
+    iframe.contentWindow?.postMessage(
+      { type: 'setClosingMessage', closingMessage: closingMessageInput.value },
+      '*'
+    );
+  });
+
+  // Append input elements to wrapper
+  inputWrapper.appendChild(closingMessageLabel);
+  inputWrapper.appendChild(closingMessageInput);
+  inputWrapper.appendChild(closingMessageCounter);
 
   // Append label to video wrapper
   videoWrapper.appendChild(video);
@@ -232,11 +307,12 @@
 
   // Append elements to container
   container.appendChild(videoWrapper);
+  container.appendChild(inputWrapper);
   container.appendChild(loading);
   container.appendChild(iframe);
   container.appendChild(closeButton);
   container.appendChild(errorMessage);
-  document.getElementById('earnlinks-chat-widget').appendChild(container);
+  document.getElementById('linka-ai-chat-widget').appendChild(container);
 
   // Fetch video URL
   loading.style.display = 'block';
@@ -267,6 +343,7 @@
     closeButton.classList.add('active');
     container.classList.add('active');
     videoWrapper.classList.add('hidden');
+    inputWrapper.classList.add('active');
   });
 
   closeButton.addEventListener('click', () => {
@@ -274,6 +351,7 @@
     closeButton.classList.remove('active');
     container.classList.remove('active');
     videoWrapper.classList.remove('hidden');
+    inputWrapper.classList.remove('active');
   });
 
   // Handle window resize
@@ -288,6 +366,7 @@
     // Notify iframe content
     iframe.contentWindow?.postMessage({ type: 'setWidth', width: iframe.style.width }, '*');
     iframe.contentWindow?.postMessage({ type: 'setHeight', height: iframe.style.height }, '*');
+    iframe.contentWindow?.postMessage({ type: 'setClosingMessage', closingMessage: closingMessageInput.value }, '*');
   };
 
   window.addEventListener('resize', updateIframeSize);
@@ -300,10 +379,13 @@
     } else if (event.data.type === 'setHeight') {
       container.style.setProperty('--chat-height', event.data.height);
       updateIframeSize();
+    } else if (event.data.type === 'setClosingMessage') {
+      closingMessageInput.value = event.data.closingMessage || '';
+      closingMessageCounter.textContent = `${closingMessageInput.value.length}/500`;
     }
   });
 
-  // Expose functions to update width and height dynamically
+  // Expose functions to update widget properties
   window.EarnLinksChatWidget = {
     setWidth: (newWidth) => {
       const widthValue = typeof newWidth === 'string' ? newWidth : `${newWidth}px`;
@@ -315,8 +397,17 @@
       container.style.setProperty('--chat-height', heightValue);
       updateIframeSize();
     },
+    setClosingMessage: (newMessage) => {
+      closingMessageInput.value = newMessage.slice(0, 500); // Enforce 500-char limit
+      closingMessageCounter.textContent = `${closingMessageInput.value.length}/500`;
+      iframe.contentWindow?.postMessage(
+        { type: 'setClosingMessage', closingMessage: closingMessageInput.value },
+        '*'
+      );
+    },
   };
 
-  // Initial size update
+  // Initial size update and closing message setup
   updateIframeSize();
+  closingMessageCounter.textContent = `${closingMessageInput.value.length}/500`;
 })();
